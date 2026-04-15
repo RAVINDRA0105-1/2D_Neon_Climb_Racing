@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>2D Neon Climb Racing</title>
+<style>
+body,html{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#050505;font-family:Arial,sans-serif;touch-action:none;color:#fff}
+canvas{display:block}
+.overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100}
+h1{font-size:clamp(32px,8vw,48px);margin-bottom:20px;text-align:center;color:#0ff;text-shadow:0 0 10px #0ff,0 0 20px #0ff}
+p{font-size:clamp(16px,4vw,24px);margin-bottom:30px;color:#f0f;text-shadow:0 0 10px #f0f}
+.menu-btn{background:0 0;color:#0ff;border:2px solid #0ff;border-radius:10px;padding:clamp(10px,2vh,15px) clamp(20px,5vw,40px);margin:10px;font-size:clamp(16px,4vw,24px);font-weight:700;cursor:pointer;transition:transform .1s;box-shadow:0 0 10px #0ff inset,0 0 10px #0ff;text-shadow:0 0 5px #0ff}
+.menu-btn:active{transform:scale(.95)}
+#ui-container{position:absolute;bottom:20px;width:100%;display:flex;justify-content:space-between;pointer-events:none;z-index:10}
+.right-controls{display:flex;margin-right:15px}
+.control-btn{background:rgba(0,0,0,.6);color:#0f0;border:2px solid #0f0;border-radius:50%;width:clamp(60px,18vw,80px);height:clamp(60px,18vw,80px);font-size:clamp(12px,3.5vw,16px);font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 clamp(5px,2vw,15px);pointer-events:auto;user-select:none;box-shadow:0 0 10px #0f0 inset,0 0 10px #0f0;text-shadow:0 0 5px #0f0;transition:transform .1s}
+.control-btn:active,.control-btn.active{background:rgba(0,255,0,.2);transform:scale(.95)}
+#btn-boost{color:#f0f;border-color:#f0f;box-shadow:0 0 10px #f0f inset,0 0 10px #f0f;text-shadow:0 0 5px #f0f}
+#btn-boost:active,#btn-boost.active{background:rgba(255,0,255,.2)}
+#btn-brake{margin-left:clamp(10px,5vw,30px)}
+.hud-box{position:absolute;background:rgba(0,0,0,.7);border:1px solid #0ff;border-radius:10px;pointer-events:none;z-index:10;box-shadow:0 0 5px #0ff;color:#0ff;text-shadow:0 0 5px #0ff}
+#score-board{top:20px;left:20px;font-size:clamp(16px,4vw,24px);font-weight:700;padding:10px 20px}
+#instructions{top:80px;left:20px;font-size:clamp(10px,2.5vw,14px);padding:10px}
+#btn-pause{top:20px;right:20px;font-size:clamp(16px,4vw,24px);font-weight:700;cursor:pointer;padding:clamp(5px,1.5vh,10px) clamp(10px,3vw,20px);pointer-events:auto}
+#btn-pause:active{transform:scale(.95)}
+.hide{display:none !important}
+</style>
+</head>
+<body>
+
+<div id="title-screen" class="overlay">
+    <h1>2D Neon Climb Racing</h1>
+    <button class="menu-btn" onclick="start()">Play</button>
+    <button class="menu-btn" onclick="window.location.href='https://ravindra0105-1.github.io/Retro_Lite_Neon_Games/'">Quit</button>
+</div>
+
+<div id="pause-screen" class="overlay hide">
+    <h1>Paused</h1>
+    <button class="menu-btn" onclick="resume()">Resume</button>
+    <button class="menu-btn" onclick="quit()">Quit to Title</button>
+</div>
+
+<div id="game-over-screen" class="overlay hide">
+    <h1 style="color:#f00;text-shadow:0 0 10px #f00,0 0 20px #f00">Game Over!</h1>
+    <p>You flipped the car.</p>
+    <button class="menu-btn" onclick="start()">Play Again</button>
+    <button class="menu-btn" onclick="quit()">Quit to Title</button>
+</div>
+
+<div id="score-board" class="hud-box hide">Distance: <span id="dist">0</span>m</div>
+<div id="instructions" class="hud-box hide"><strong>PC:</strong> Arrows/AD Drive. Shift/W Boost.<br><strong>Mobile:</strong> Screen buttons</div>
+<div id="btn-pause" class="hud-box hide" onclick="pause()">II Pause</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="ui-container" class="hide">
+    <div class="control-btn" id="btn-brake">BRAKE</div>
+    <div class="right-controls">
+        <div class="control-btn" id="btn-boost">BOOST</div>
+        <div class="control-btn" id="btn-gas">GAS</div>
+    </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id), ctx = $('gameCanvas').getContext('2d');
+let st = 'TITLE', carX = 0, carY = 0, vel = 0, velY = 0, ang = 0, aVel = 0, inAir = !1, wAng = 0, started = !1;
+let keys = { gas: !1, brake: !1, boost: !1 }, stars = [], sc = 1, cW = 0, cH = 0;
+const maxS=12, bMaxS=22, acc=.15, bPwr=.35, brk=.08, grav=.35, vGrav=.16, fric=.98;
+
+const rsz = () => { 
+    $('gameCanvas').width = innerWidth; $('gameCanvas').height = innerHeight; 
+    sc = Math.min(innerWidth / 900, innerHeight / 600, 1);
+    cW = innerWidth / sc; cH = innerHeight / sc;
+    stars = [];
+    for(let i=0; i<60; i++) {
+        let x, y, k=0;
+        do { x = Math.random()*cW; y = Math.random()*cH*.6; }
+        while(stars.some(s => Math.hypot(s.x-x, s.y-y) < 40) && ++k<50);
+        stars.push({x, y, t: i%3});
+    }
+};
+window.onresize = rsz; rsz();
+const getElv = x => Math.sin(x/200)*80 + Math.sin(x/500)*150 + Math.sin(x/80)*20;
+
+const toggleUI = (v1,v2,v3,v4) => { 
+    $('title-screen').className = v1; $('game-over-screen').className = v2; $('pause-screen').className = v3;
+    $('ui-container').className = $('score-board').className = $('instructions').className = $('btn-pause').className = v4;
+};
+const start = () => { carX=carY=vel=velY=ang=aVel=wAng=0; inAir=!1; started=!1; keys={gas:!1,brake:!1,boost:!1}; st='PLAY'; toggleUI('overlay hide','overlay hide','overlay hide','hud-box'); $('ui-container').className=''; };
+const quit = () => { st='TITLE'; toggleUI('overlay','overlay hide','overlay hide','hide'); };
+const pause = () => { if(st==='PLAY') { st='PAUSE'; keys={gas:!1,brake:!1,boost:!1}; $('pause-screen').className='overlay'; $('ui-container').className='hide'; } };
+const resume = () => { st='PLAY'; $('pause-screen').className='overlay hide'; $('ui-container').className=''; };
+
+window.onkeydown=e=>{if(st!=='PLAY')return;let k=e.key;if(k=='ArrowRight'||k=='d')keys.gas=!0;if(k=='ArrowLeft'||k=='a')keys.brake=!0;if(k=='Shift'||k=='w'||k=='ArrowUp')keys.boost=!0;if(k=='Escape')pause();};
+window.onkeyup=e=>{let k=e.key;if(k=='ArrowRight'||k=='d')keys.gas=!1;if(k=='ArrowLeft'||k=='a')keys.brake=!1;if(k=='Shift'||k=='w'||k=='ArrowUp')keys.boost=!1;};
+
+const bindBtn=(id,k)=>{ let b=$(id),on=e=>{if(e)e.preventDefault();if(st==='PLAY'){keys[k]=!0;b.classList.add('active')}},off=e=>{if(e)e.preventDefault();keys[k]=!1;b.classList.remove('active')};
+b.ontouchstart=b.onmousedown=on; b.ontouchend=b.onmouseup=b.onmouseleave=off; };
+bindBtn('btn-gas','gas'); bindBtn('btn-brake','brake'); bindBtn('btn-boost','boost');
+
+function update() {
+    let dX=5, slp=Math.atan2(getElv(carX+dX)-getElv(carX-dX),dX*2), gY=getElv(carX);
+    inAir = carY < gY - 2;
+    if(!inAir) {
+        if(keys.gas||keys.brake||keys.boost) started=!0;
+        if(keys.gas && vel<maxS) vel+=acc;
+        if(keys.boost && vel<bMaxS) vel+=bPwr;
+        if(keys.brake) vel-=brk;
+        vel = (vel + (started?Math.sin(slp)*grav:0)) * fric; ang = slp; aVel = 0;
+    } else {
+        vel *= .995;
+        if(keys.gas||keys.boost) aVel-=.005; if(keys.brake) aVel+=.005;
+        ang += aVel; aVel *= .95;
+    }
+    vel = Math.max(-15, Math.min(vel, 35)); carX += vel; velY += vGrav; carY += velY;
+    let nA = ((ang + Math.PI) % (Math.PI*2)) - Math.PI;
+    let nGY = getElv(carX);
+    if(carY >= nGY-30 && Math.abs(nA) > Math.PI/1.8) { st='OVER'; $('game-over-screen').className='overlay'; $('ui-container').className=$('btn-pause').className='hide'; keys={gas:!1,brake:!1,boost:!1}; return; }
+    if(carY >= nGY && st === 'PLAY') { if(inAir) vel += (velY*Math.sin(slp))*.7; carY = nGY; velY = vel*Math.tan(slp); inAir = !1; ang = slp; }
+    $('dist').innerText = Math.floor(carX/10);
+}
+
+const nGlow = (c, b) => { ctx.shadowColor = c; ctx.shadowBlur = b; ctx.strokeStyle = c; ctx.fillStyle = c; };
+
+function draw() {
+    ctx.save();
+    ctx.scale(sc, sc);
+    
+    ctx.fillStyle = '#0f0f18'; ctx.fillRect(0,0,cW,cH);
+    
+    // Moon
+    ctx.save(); 
+    ctx.translate(cW*.2, cH*.15); 
+    ctx.rotate(-Math.PI/5);
+    nGlow('#ff0',15); ctx.lineWidth=3; ctx.beginPath();
+    ctx.arc(0, 0, 22, Math.PI*.25, Math.PI*1.75, !1);
+    ctx.quadraticCurveTo(-20, 0, 22*Math.cos(Math.PI*.25), 22*Math.sin(Math.PI*.25));
+    ctx.stroke(); 
+    ctx.restore();
+
+    // Random non-overlapping Stars (Dots & Crosses)
+    stars.forEach((s, i) => {
+        let sx = ((s.x - carX*.02) % cW + cW) % cW;
+        nGlow(i%2 ? '#0ff' : '#ff0', 8); 
+        if(s.t===0) { ctx.fillRect(sx-3, s.y, 7, 2); ctx.fillRect(sx-1, s.y-2, 2, 6); } 
+        else ctx.fillRect(sx, s.y, 3, 3);
+    });
+
+    ctx.save();
+    let camX = cW/3, basY = cH/1.5;
+
+    // Jagged Background Mountains (with colored filled silhouettes to occlude)
+    const drawBg = (p, c, fc, yOff, f, h) => {
+        ctx.save(); ctx.translate(camX - carX*p, basY - yOff); 
+        let s = (carX*p)-camX-100, e = s+cW+200;
+        
+        // Fill mountain to block objects behind it with distinct colors
+        ctx.beginPath(); ctx.moveTo(s, 2000);
+        for(let x=s; x<=e; x+=30) ctx.lineTo(x, Math.abs(Math.sin(x/f))*h + Math.sin(x/(f*.4))*h*.3);
+        ctx.lineTo(e, 2000); ctx.closePath();
+        nGlow('transparent', 0); ctx.fillStyle = fc; ctx.fill();
+        
+        // Draw the glowing neon edge
+        ctx.beginPath();
+        for(let x=s; x<=e; x+=30) ctx.lineTo(x, Math.abs(Math.sin(x/f))*h + Math.sin(x/(f*.4))*h*.3);
+        ctx.lineWidth=4; nGlow(c,15); ctx.stroke(); ctx.restore();
+    };
+    drawBg(.1, '#00d4ff', '#002244', 250, 200, 150); // Far Cyan
+    drawBg(.3, '#a200ff', '#2a004d', 100, 150, 100); // Mid Purple
+
+    // Foreground Camera
+    ctx.translate(camX - carX, basY - carY);
+    let sX=carX-camX-100, eX=carX+cW+100;
+
+    // Foreground Terrain Fill (Shifting Full RGB colours based on movement)
+    ctx.beginPath(); ctx.moveTo(sX, 10000);
+    for(let x=sX; x<=eX; x+=10) ctx.lineTo(x, getElv(x));
+    ctx.lineTo(eX, 10000); ctx.closePath(); 
+    nGlow('transparent', 0); 
+    
+    // Create shifting RGB linear gradient
+    let rgbGrad = ctx.createLinearGradient(sX, 0, eX, 0);
+    rgbGrad.addColorStop(0, `hsl(${carX*.2%360}, 100%, 25%)`);
+    rgbGrad.addColorStop(0.5, `hsl(${(carX*.2+120)%360}, 100%, 25%)`);
+    rgbGrad.addColorStop(1, `hsl(${(carX*.2+240)%360}, 100%, 25%)`);
+    ctx.fillStyle = rgbGrad; 
+    ctx.fill();
+
+    // Gradient Multi-Color Ground Line
+    let g = ctx.createLinearGradient(sX, 0, eX, 0);
+    g.addColorStop(0, '#0ff'); g.addColorStop(.33, '#f0f'); g.addColorStop(.66, '#ff8c00'); g.addColorStop(1, '#0f0');
+    
+    ctx.beginPath(); for(let x=sX; x<=eX; x+=10) ctx.lineTo(x, getElv(x));
+    ctx.lineWidth = 4; nGlow('transparent', 0); ctx.strokeStyle = g; ctx.shadowColor = '#ff8c00'; ctx.shadowBlur = 15; ctx.stroke();
+
+    // The Neon Jeep
+    ctx.translate(carX, carY); ctx.rotate(ang);
+    
+    if(keys.boost && st==='PLAY') {
+        nGlow('#f00', 15); ctx.beginPath();
+        ctx.moveTo(-35,-15); ctx.lineTo(-50-Math.random()*20,-15); ctx.lineTo(-35,-10); ctx.fill();
+    }
+    
+    // Jeep Body (Orange)
+    ctx.beginPath();
+    ctx.moveTo(35,-10); ctx.lineTo(38,-10); ctx.lineTo(38,-20); // Front
+    ctx.lineTo(25,-20); ctx.lineTo(20,-28); ctx.lineTo(5,-28); // Hood
+    ctx.lineTo(0,-42); ctx.lineTo(-20,-42); // Roof
+    ctx.lineTo(-30,-28); ctx.lineTo(-30,-10); // Back
+    ctx.arc(-20, -12, 14, Math.PI, 0, !0); // Back Fender
+    ctx.lineTo(6, -10); // Bottom Mid
+    ctx.arc(20, -12, 14, Math.PI, 0, !0); // Front Fender
+    ctx.closePath(); 
+    // Fill to occlude ground behind the Jeep
+    nGlow('transparent', 0); ctx.fillStyle = '#0f0f18'; ctx.fill();
+    nGlow('#ff8c00', 12); ctx.lineWidth=4; ctx.stroke();
+    
+    // Jeep Doors
+    ctx.beginPath(); ctx.moveTo(5,-28); ctx.lineTo(5,-15); ctx.lineTo(-15,-15); ctx.lineTo(-15,-28); ctx.stroke();
+    
+    // Driver (Purple)
+    nGlow('#f0f', 10); ctx.beginPath();
+    ctx.arc(-10,-32,4,0,7); ctx.moveTo(-10,-28); ctx.lineTo(-10,-20); // Head & Body
+    ctx.moveTo(-10,-24); ctx.lineTo(0,-24); ctx.lineTo(3,-20); ctx.stroke(); // Arm
+    
+    // Spare Tire (Cyan)
+    nGlow('#0ff', 10); ctx.beginPath(); ctx.arc(-35,-20,6,0,7); ctx.moveTo(-35,-20); ctx.lineTo(-30,-20); ctx.stroke();
+
+    // Wheels
+    let spd = (st==='PLAY'||Math.abs(vel)>.1) ? vel : 0;
+    const dW = (x) => {
+        if(st==='PLAY') wAng += spd*.05;
+        ctx.save(); ctx.translate(x, -12); ctx.rotate(wAng);
+        
+        // Solid fill wheel to block background
+        ctx.beginPath(); ctx.arc(0,0,10,0,7); 
+        nGlow('transparent', 0); ctx.fillStyle = '#0f0f18'; ctx.fill();
+        
+        nGlow('#0ff', 10); ctx.lineWidth=3; ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,4,0,7); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,1.5,0,7); ctx.fill();
+        ctx.restore();
+    };
+    dW(-20); dW(20); ctx.restore();
+    
+    ctx.restore(); // Restore Camera
+    ctx.restore(); // Restore Scale
+}
+
+(function loop() { if(st==='PLAY') update(); draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
