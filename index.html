@@ -63,7 +63,7 @@ p{font-size:clamp(16px,4vw,24px);margin-bottom:30px;color:#f0f;text-shadow:0 0 1
 
 <script>
 const $ = id => document.getElementById(id), ctx = $('gameCanvas').getContext('2d');
-let st = 'TITLE', carX = 0, carY = 0, vel = 0, velY = 0, ang = 0, aVel = 0, inAir = !1, wAng = 0, started = !1;
+let st = 'TITLE', carX = 0, carY = 0, vel = 0, velY = 0, ang = 0, aVel = 0, inAir = !1, wAng = 0, started = !1, curZoom = 2.2;
 let keys = { gas: !1, brake: !1, boost: !1 }, stars = [], sc = 1, cW = 0, cH = 0;
 const maxS=12, bMaxS=22, acc=.15, bPwr=.35, brk=.08, grav=.35, vGrav=.16, fric=.98;
 
@@ -86,7 +86,7 @@ const toggleUI = (v1,v2,v3,v4) => {
     $('title-screen').className = v1; $('game-over-screen').className = v2; $('pause-screen').className = v3;
     $('ui-container').className = $('score-board').className = $('instructions').className = $('btn-pause').className = v4;
 };
-const start = () => { carX=carY=vel=velY=ang=aVel=wAng=0; inAir=!1; started=!1; keys={gas:!1,brake:!1,boost:!1}; st='PLAY'; toggleUI('overlay hide','overlay hide','overlay hide','hud-box'); $('ui-container').className=''; };
+const start = () => { carX=carY=vel=velY=ang=aVel=wAng=0; inAir=!1; started=!1; curZoom=2.2; keys={gas:!1,brake:!1,boost:!1}; st='PLAY'; toggleUI('overlay hide','overlay hide','overlay hide','hud-box'); $('ui-container').className=''; };
 const quit = () => { st='TITLE'; toggleUI('overlay','overlay hide','overlay hide','hide'); };
 const pause = () => { if(st==='PLAY') { st='PAUSE'; keys={gas:!1,brake:!1,boost:!1}; $('pause-screen').className='overlay'; $('ui-container').className='hide'; } };
 const resume = () => { st='PLAY'; $('pause-screen').className='overlay hide'; $('ui-container').className=''; };
@@ -149,10 +149,20 @@ function draw() {
     ctx.save();
     let camX = cW/3, basY = cH/1.5;
 
+    // --- Dynamic Camera Zoom Effect ---
+    let speedPct = Math.min(Math.abs(vel) / bMaxS, 1);
+    let tgtZoom = 2.2 - (speedPct * 1.0); // 2.2x zoom when slow, 1.2x zoom at max speed
+    curZoom += (tgtZoom - curZoom) * 0.05; // Smooth transition
+    ctx.translate(camX, basY);
+    ctx.scale(curZoom, curZoom);
+    ctx.translate(-camX, -basY);
+    // ----------------------------------
+
     // Jagged Background Mountains (with colored filled silhouettes to occlude)
     const drawBg = (p, c, fc, yOff, f, h) => {
         ctx.save(); ctx.translate(camX - carX*p, basY - yOff); 
-        let s = (carX*p)-camX-100, e = s+cW+200;
+        // Expanded boundaries (400 to 800) to ensure backgrounds fill the screen when zoomed out
+        let s = (carX*p)-camX-400, e = s+cW+800;
         
         // Fill mountain to block objects behind it with distinct colors
         ctx.beginPath(); ctx.moveTo(s, 2000);
@@ -170,7 +180,7 @@ function draw() {
 
     // Foreground Camera
     ctx.translate(camX - carX, basY - carY);
-    let sX=carX-camX-100, eX=carX+cW+100;
+    let sX=carX-camX-400, eX=carX+cW+800; // Expanded boundaries
 
     // Foreground Terrain Fill (Shifting Full RGB colours based on movement)
     ctx.beginPath(); ctx.moveTo(sX, 10000);
